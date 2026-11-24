@@ -409,6 +409,11 @@ def tpex_day(d):
         rows = table(j)
         if rows and not getattr(tpex_day, "_logged", False):
             tpex_day._logged = True
+            print("上櫃回應鍵:", list(j.keys()))
+            for t_ in j.get("tables", []):
+                dd = t_.get("data") or [[]]
+                print("上櫃表:", t_.get("title"), "欄位數", len(t_.get("fields") or []), "資料寬", len(dd[0]) if dd else 0,
+                      "groups", t_.get("groups"), "第一列", dd[0] if dd else None)
             print("上櫃三大法人欄位:", list(rows[0].keys()))
             print("上櫃三大法人第一列:", list(rows[0].values()))
         net = lambda k: "買賣超" in k or "淨買" in k or "淨額" in k  # noqa: E731
