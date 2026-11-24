@@ -902,6 +902,20 @@ def lottery():
     return out
 
 
+def with_fallback(name, fn):
+    """來源暫時連不上時，沿用上次成功抓到的資料（法說會的公開資訊觀測站偶爾會擋）。"""
+    path = os.path.join(HDIR, f"{name}.json")
+    n_err = len(ERRORS)
+    res = fn()
+    if res or len(ERRORS) == n_err:
+        save(path, res)
+        return res
+    old = load(path, [])
+    if old:
+        ERRORS[-1] = ERRORS[-1] + "（顯示上次資料）"
+    return old
+
+
 # ---------- 主程式 ----------
 def main():
     os.makedirs(KDIR, exist_ok=True)
@@ -915,7 +929,7 @@ def main():
         "ratios": ratios(),
     }
     data["info"] = {
-        "news": news(), "calls": investor_conferences(),
+        "news": news(), "calls": with_fallback("calls", investor_conferences),
         "divTW": tw_dividends(), "divUS": us_dividends(),
         "splits": splits(), "lottery": lottery(),
     }
