@@ -590,6 +590,8 @@ def split_us():
         print("那斯達克分割欄位:", list(rows[0].keys()))
     out = []
     for x in rows:
+        if "%" in str(x.get("ratio", "")):  # 股票股利（例如 5%），不是分割
+            continue
         nums = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", str(x.get("ratio", "")))]
         # 那斯達克寫法為「新 : 舊」，例如 4 : 1 代表一拆四
         txt = ratio_text(nums[1], nums[0]) if len(nums) >= 2 else str(x.get("ratio", ""))
@@ -609,7 +611,9 @@ def split_tw():
     for path in ("change/TWTB7U", "change/TWTB8U", "split/TWTCAU", "split/TWTCBU"):
         url = f"https://www.twse.com.tw/rwd/zh/{path}?response=json"
         try:
-            rows = table(twse(url))
+            j = twse(url)
+            print(f"證交所 {path} stat:", None if j is None else (j.get("stat"), len(j.get("data") or [])))
+            rows = table(j)
         except Exception as e:  # noqa: BLE001
             tried.append(f"{path}:{type(e).__name__}")
             continue
@@ -669,6 +673,15 @@ def splits():
         except Exception as e:  # noqa: BLE001
             ERRORS.append(f"{name}: {type(e).__name__}: {e}")
     lo, hi = (TODAY - dt.timedelta(days=30)).isoformat(), (TODAY + dt.timedelta(days=90)).isoformat()
+    # 手動清單：已通過、但交易所還沒公告日期的分割（例如 ETF 受益人會議通過後）
+    pending = []
+    for m in CFG.get("split_manual", []):
+        if m.get("date"):
+            out.append({"date": m["date"], "code": m["code"], "name": m.get("name", ""),
+                         "ratio": m.get("ratio", "分割"), "market": m.get("market", "台股")})
+        elif not any(x["code"].replace(".TW", "") == m["code"] for x in out):
+            pending.append({"date": "", "code": m["code"], "name": m.get("name", ""), "ratio": m.get("ratio", "分割"),
+                            "market": m.get("market", "台股"), "upcoming": True, "pending": True, "note": m.get("note", "")})
     seen, res = set(), []
     for x in sorted(out, key=lambda x: x["date"]):
         k = (x["code"].replace(".TW", ""), x["date"])
@@ -680,7 +693,7 @@ def splits():
     # 即將生效的排前面（近到遠），再接已生效（新到舊）
     up = [x for x in res if x["upcoming"]]
     done = sorted((x for x in res if not x["upcoming"]), key=lambda x: x["date"], reverse=True)
-    return up + done
+    return pending + up + done
 
 
 # ---------- 資訊：申購抽籤 ----------

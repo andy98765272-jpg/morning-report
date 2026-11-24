@@ -210,9 +210,9 @@ function pageInfo() {
   const splits = (I.splits || []).slice(0, 15).map((s) => `
     <div class="lrow" style="min-height:56px;gap:10px">
       <div class="col" style="flex:1;min-width:0;gap:2px"><span style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span class="num">${esc(s.code)}</span>${s.name ? ` <span class="lbl" style="font-weight:400">${esc(s.name)}</span>` : ''}</span>
-        <span class="num small"><span style="color:${s.market === '台股' ? UP : BLUE}">${esc(s.market || '')}</span> · ${s.upcoming ? '生效日' : '已生效'} ${esc(s.date)}</span></div>
+        <span class="num small"><span style="color:${s.market === '台股' ? UP : BLUE}">${esc(s.market || '')}</span> · ${s.pending ? esc(s.note || '日期待公告') : `${s.upcoming ? '生效日' : '已生效'} ${esc(s.date)}`}</span></div>
       <span class="num" style="font-size:15px;font-weight:700">${esc(s.ratio)}</span>
-      <span style="${pill(s.upcoming ? AMB : MUT)}">${s.upcoming ? '即將生效' : '已生效'}</span>
+      <span style="${pill(s.pending ? BLUE : s.upcoming ? AMB : MUT)}">${s.pending ? '已通過' : s.upcoming ? '即將生效' : '已生效'}</span>
     </div>`).join('');
   const ST = { open: ['申購中', UP], soon: ['即將開始', AMB], closed: ['已截止', MUT] };
   const lots = (I.lottery || []).map((l) => `

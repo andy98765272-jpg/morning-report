@@ -1,37 +1,139 @@
 {
   "us_indices": [
-    {"sym": "^DJI", "name": "道瓊工業"},
-    {"sym": "^GSPC", "name": "標普 500"},
-    {"sym": "^IXIC", "name": "那斯達克"},
-    {"sym": "^SOX", "name": "費城半導體"}
+    {
+      "sym": "^DJI",
+      "name": "道瓊工業"
+    },
+    {
+      "sym": "^GSPC",
+      "name": "標普 500"
+    },
+    {
+      "sym": "^IXIC",
+      "name": "那斯達克"
+    },
+    {
+      "sym": "^SOX",
+      "name": "費城半導體"
+    }
   ],
   "us_hot": [
-    {"sym": "NVDA", "name": "輝達"},
-    {"sym": "TSLA", "name": "特斯拉"},
-    {"sym": "AAPL", "name": "蘋果"},
-    {"sym": "MSFT", "name": "微軟"},
-    {"sym": "AMD", "name": "超微"},
-    {"sym": "AVGO", "name": "博通"},
-    {"sym": "META", "name": "Meta"},
-    {"sym": "AMZN", "name": "亞馬遜"},
-    {"sym": "GOOGL", "name": "Alphabet"},
-    {"sym": "PLTR", "name": "Palantir"}
+    {
+      "sym": "NVDA",
+      "name": "輝達"
+    },
+    {
+      "sym": "TSLA",
+      "name": "特斯拉"
+    },
+    {
+      "sym": "AAPL",
+      "name": "蘋果"
+    },
+    {
+      "sym": "MSFT",
+      "name": "微軟"
+    },
+    {
+      "sym": "AMD",
+      "name": "超微"
+    },
+    {
+      "sym": "AVGO",
+      "name": "博通"
+    },
+    {
+      "sym": "META",
+      "name": "Meta"
+    },
+    {
+      "sym": "AMZN",
+      "name": "亞馬遜"
+    },
+    {
+      "sym": "GOOGL",
+      "name": "Alphabet"
+    },
+    {
+      "sym": "PLTR",
+      "name": "Palantir"
+    }
   ],
   "us_hot_show": 6,
   "adrs": [
-    {"sym": "TSM", "name": "台積電", "tw": "2330.TW", "ratio": 5},
-    {"sym": "UMC", "name": "聯電", "tw": "2303.TW", "ratio": 5},
-    {"sym": "ASX", "name": "日月光", "tw": "3711.TW", "ratio": 2},
-    {"sym": "CHT", "name": "中華電", "tw": "2412.TW", "ratio": 10}
+    {
+      "sym": "TSM",
+      "name": "台積電",
+      "tw": "2330.TW",
+      "ratio": 5
+    },
+    {
+      "sym": "UMC",
+      "name": "聯電",
+      "tw": "2303.TW",
+      "ratio": 5
+    },
+    {
+      "sym": "ASX",
+      "name": "日月光",
+      "tw": "3711.TW",
+      "ratio": 2
+    },
+    {
+      "sym": "CHT",
+      "name": "中華電",
+      "tw": "2412.TW",
+      "ratio": 10
+    }
   ],
-  "us_dividend_watch": ["AAPL", "MSFT", "KO", "JNJ", "PG", "NVDA", "AVGO", "JPM", "XOM", "PEP"],
-  "split_watch": ["NVDA", "AVGO", "AAPL", "TSLA", "AMZN", "GOOGL", "WMT", "CMG", "0050.TW", "2330.TW"],
+  "us_dividend_watch": [
+    "AAPL",
+    "MSFT",
+    "KO",
+    "JNJ",
+    "PG",
+    "NVDA",
+    "AVGO",
+    "JPM",
+    "XOM",
+    "PEP"
+  ],
+  "split_watch": [
+    "NVDA",
+    "AVGO",
+    "AAPL",
+    "TSLA",
+    "AMZN",
+    "GOOGL",
+    "WMT",
+    "CMG",
+    "0050.TW",
+    "2330.TW"
+  ],
   "news_feeds": [
-    {"cat": "TW", "url": "https://tw.stock.yahoo.com/rss?category=tw-market"},
-    {"cat": "US", "url": "https://tw.stock.yahoo.com/rss?category=intl-markets"},
-    {"cat": "MAC", "url": "https://news.google.com/rss/search?q=%E8%81%AF%E6%BA%96%E6%9C%83+OR+%E9%80%9A%E8%86%A8+OR+%E5%A4%AE%E8%A1%8C+when:1d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"}
+    {
+      "cat": "TW",
+      "url": "https://tw.stock.yahoo.com/rss?category=tw-market"
+    },
+    {
+      "cat": "US",
+      "url": "https://tw.stock.yahoo.com/rss?category=intl-markets"
+    },
+    {
+      "cat": "MAC",
+      "url": "https://news.google.com/rss/search?q=%E8%81%AF%E6%BA%96%E6%9C%83+OR+%E9%80%9A%E8%86%A8+OR+%E5%A4%AE%E8%A1%8C+when:1d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+    }
   ],
   "news_per_cat": 8,
   "ratio_days": 5,
-  "ratio_top": 10
+  "ratio_top": 10,
+  "split_manual": [
+    {
+      "code": "0053",
+      "name": "元大科技市值",
+      "market": "台股",
+      "ratio": "分割",
+      "note": "10/8 受益人會議通過，分割日期待公告"
+    }
+  ]
 }
