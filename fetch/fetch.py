@@ -407,17 +407,32 @@ def tpex_day(d):
                    data={"type": "Daily", "sect": "EW", "date": d.strftime("%Y/%m/%d"), "id": "", "response": "json"}, timeout=30)
         j = r.json()
         rows = table(j)
+        if rows and not getattr(tpex_day, "_logged", False):
+            tpex_day._logged = True
+            print("上櫃三大法人欄位:", list(rows[0].keys()))
+            print("上櫃三大法人第一列:", list(rows[0].values()))
+        net = lambda k: "買賣超" in k or "淨買" in k or "淨額" in k  # noqa: E731
+        keys = list(rows[0].keys()) if rows else []
+        positional = len(keys) >= 24 and not any(net(k) for k in keys)
         for x in rows:
+            if positional:  # 欄位名稱看不出意思時，依官方表格固定順序取值
+                v = list(x.values())
+                out[str(v[0]).strip()] = ([int(num(v[10]) or 0), int(num(v[13]) or 0), int(num(v[22]) or 0)], str(v[1]).strip())
+                continue
             code = str(col(x, "代號") or "").strip()
-            f = next((num(v) for k, v in x.items() if "外資及陸資" in k and "買賣超" in k and "不含" not in k), None)
+            f = next((num(v) for k, v in x.items() if "外資及陸資" in k and net(k) and "不含" not in k), None)
             if f is None:
-                f = (num(col(x, "外資及陸資", "不含", "買賣超")) or 0) + (num(col(x, "外資自營商", "買賣超")) or 0)
-            t = num(col(x, "投信", "買賣超"))
-            dl = next((num(v) for k, v in x.items() if k.startswith("自營商") and "買賣超" in k and "自行" not in k and "避險" not in k), None)
+                f = (next((num(v) for k, v in x.items() if "外資及陸資" in k and "不含" in k and net(k)), 0) or 0) + \
+                    (next((num(v) for k, v in x.items() if "外資自營商" in k and net(k)), 0) or 0)
+            t = next((num(v) for k, v in x.items() if "投信" in k and net(k)), None)
+            dl = next((num(v) for k, v in x.items() if k.startswith("自營商") and net(k) and "自行" not in k and "避險" not in k), None)
+            if dl is None:
+                dl = sum(num(v) or 0 for k, v in x.items() if k.startswith("自營商") and net(k))
             if code:
                 out[code] = ([int(f or 0), int(t or 0), int(dl or 0)], str(col(x, "名稱") or code).strip())
-        if out:
+        if out and any(any(v[0]) for v in out.values()):
             return out
+        out = {}
         tries.append(f"新版:{j.get('stat') if isinstance(j, dict) else type(j).__name__}")
     except Exception as e:  # noqa: BLE001
         tries.append(f"新版:{type(e).__name__}")
@@ -442,7 +457,7 @@ def t86_history(n_days=20):
     path = os.path.join(HDIR, "t86.json")
     cache = load(path, {"days": {}, "names": {}})
     days, names = cache["days"], cache["names"]
-    otc_days = set(cache.get("otc_days", []))
+    otc_days = set(cache.get("otc_days2", []))
     otc = set(cache.get("otc", []))
     d, got, misses = TODAY, [], 0
     while len(got) < n_days and (TODAY - d).days < n_days * 2 + 10:
@@ -479,7 +494,7 @@ def t86_history(n_days=20):
     if missing:
         ERRORS.append(f"上櫃三大法人缺 {len(missing)} 天（排行只含上市）：{', '.join(missing[-3:])}")
     cache = {"days": {k: days[k] for k in keep}, "names": names,
-             "otc_days": sorted(x for x in otc_days if x in keep), "otc": sorted(otc)}
+             "otc_days2": sorted(x for x in otc_days if x in keep), "otc": sorted(otc)}
     save(path, cache)
     return sorted(got), cache["days"], names, otc
 
