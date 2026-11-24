@@ -355,8 +355,20 @@ def inst_flows():
 
 
 # ---------- 台股：期貨三大法人未平倉 ----------
-@section("台指期未平倉", lambda: None)
 def futures_oi():
+    """抓不到時沿用上次成功的資料，並在錯誤清單註明。"""
+    path = os.path.join(HDIR, "oi.json")
+    try:
+        res = futures_oi_fetch()
+        save(path, res)
+        return res
+    except Exception as e:  # noqa: BLE001
+        ERRORS.append(f"台指期未平倉（顯示上次資料）: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        return load(path, None)
+
+
+def futures_oi_fetch():
     start = TODAY - dt.timedelta(days=40)
     r = S.post("https://www.taifex.com.tw/cht/3/futContractsDateDown", data={
         "queryStartDate": start.strftime("%Y/%m/%d"), "queryEndDate": TODAY.strftime("%Y/%m/%d"),
@@ -364,7 +376,10 @@ def futures_oi():
     }, timeout=30)
     df = pd.read_csv(io.StringIO(r.content.decode("big5", errors="ignore")), index_col=False)
     df.columns = [str(c).strip() for c in df.columns]
-    netcol = next(c for c in df.columns if "未平倉" in c and "淨額" in c and "口數" in c)
+    netcol = next((c for c in df.columns if "未平倉" in c and "淨額" in c and "口數" in c), None)
+    if netcol is None:
+        print("期交所未平倉回應前 300 字:", r.content.decode("big5", errors="ignore")[:300])
+        raise ValueError(f"期交所回傳格式不同，欄位：{list(df.columns)[:6]}")
     by = {}
     for _, x in df.iterrows():
         d = str(x["日期"]).replace("/", "-")
