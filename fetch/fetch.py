@@ -416,6 +416,15 @@ def tpex_day(d):
                       "groups", t_.get("groups"), "第一列", dd[0] if dd else None)
             print("上櫃三大法人欄位:", list(rows[0].keys()))
             print("上櫃三大法人第一列:", list(rows[0].values()))
+        # 欄位名稱重複（買進股數×7），改用原始列依官方固定順序取值：
+        # 10=外資及陸資合計買賣超、13=投信買賣超、22=自營商合計買賣超
+        for t_ in j.get("tables", []):
+            for v in t_.get("data") or []:
+                if len(v) >= 24:
+                    out[str(v[0]).strip()] = ([int(num(v[10]) or 0), int(num(v[13]) or 0), int(num(v[22]) or 0)], str(v[1]).strip())
+        if out and any(any(v[0]) for v in out.values()):
+            return out
+        out = {}
         net = lambda k: "買賣超" in k or "淨買" in k or "淨額" in k  # noqa: E731
         keys = list(rows[0].keys()) if rows else []
         positional = len(keys) >= 24 and not any(net(k) for k in keys)
