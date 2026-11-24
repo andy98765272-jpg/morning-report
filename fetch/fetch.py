@@ -571,22 +571,116 @@ def us_dividends():
 
 
 # ---------- 資訊：分割 ----------
-@section("股票分割", list)
-def splits():
+def ratio_text(a, b):
+    """a 股變 b 股：b>a 為分割（1 拆 N），b<a 為反分割（N 合 1）。"""
+    if not a or not b or a == b:
+        return None
+    r = b / a
+    return f"1 拆 {r:g}" if r > 1 else f"{1 / r:g} 合 1"
+
+
+def split_us():
+    """那斯達克分割行事曆：全美股、含即將生效。"""
+    r = S.get("https://api.nasdaq.com/api/calendar/splits",
+              headers={"Accept": "application/json, text/plain, */*", "Origin": "https://www.nasdaq.com",
+                       "Referer": "https://www.nasdaq.com/"}, timeout=30)
+    r.raise_for_status()
+    rows = ((r.json().get("data") or {}).get("rows")) or []
+    if rows:
+        print("那斯達克分割欄位:", list(rows[0].keys()))
+    out = []
+    for x in rows:
+        nums = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", str(x.get("ratio", "")))]
+        # 那斯達克寫法為「新 : 舊」，例如 4 : 1 代表一拆四
+        txt = ratio_text(nums[1], nums[0]) if len(nums) >= 2 else str(x.get("ratio", ""))
+        d = x.get("executionDate") or x.get("payableDate") or ""
+        try:
+            d = dt.datetime.strptime(d, "%m/%d/%Y").date().isoformat()
+        except ValueError:
+            continue
+        out.append({"date": d, "code": str(x.get("symbol", "")).strip(), "name": str(x.get("name", "")).strip(),
+                    "ratio": txt, "market": "美股"})
+    return out
+
+
+def split_tw():
+    """證交所變更面額（股票分割）與 ETF 分割公告。網址為推測，逐一嘗試。"""
+    out, tried, ok = [], [], False
+    for path in ("change/TWTB7U", "change/TWTB8U", "split/TWTCAU", "split/TWTCBU"):
+        url = f"https://www.twse.com.tw/rwd/zh/{path}?response=json"
+        try:
+            rows = table(twse(url))
+        except Exception as e:  # noqa: BLE001
+            tried.append(f"{path}:{type(e).__name__}")
+            continue
+        ok = True
+        if rows:
+            print(f"證交所 {path} 欄位:", list(rows[0].keys()))
+        for r in rows:
+            code = str(col(r, "代號") or "").strip()
+            name = str(col(r, "名稱") or "").strip()
+            d = None
+            for k in r:
+                if "日" in k and ("恢復" in k or "生效" in k or "買賣" in k or "日期" in k):
+                    d = roc_date(r[k])
+                    if d:
+                        break
+            if not code or not d:
+                continue
+            before, after = num(col(r, "變更前")), num(col(r, "變更後"))
+            txt = None
+            if before and after:  # 面額 10 元 → 1 元 = 一拆十
+                txt = ratio_text(after, before)
+            if not txt:
+                rt = col(r, "比率") or col(r, "比例")
+                v = num(rt)
+                if v and v != 1:
+                    txt = ratio_text(1, v)
+                elif rt:
+                    txt = str(rt).strip()
+            out.append({"date": d.isoformat(), "code": code, "name": name, "ratio": txt or "變更面額", "market": "台股"})
+    if not ok:
+        raise RuntimeError("證交所分割公告網址都無法使用：" + ", ".join(tried))
+    return out
+
+
+def split_watchlist():
     out = []
     since = pd.Timestamp(TODAY - dt.timedelta(days=365))
     for sym in CFG["split_watch"]:
         try:
             s = yf.Ticker(sym).splits
         except Exception as e:  # noqa: BLE001
-            ERRORS.append(f"分割 {sym}: {e}")
+            ERRORS.append(f"分割追蹤 {sym}: {e}")
             continue
         for idx, ratio in s.items():
             if idx.tz_localize(None) >= since and ratio and ratio != 1:
-                txt = f"1 拆 {ratio:g}" if ratio > 1 else f"{1 / ratio:g} 合 1"
-                out.append({"date": idx.strftime("%Y-%m-%d"), "code": sym, "ratio": txt})
-    out.sort(key=lambda x: x["date"], reverse=True)
+                out.append({"date": idx.strftime("%Y-%m-%d"), "code": sym, "name": "",
+                            "ratio": ratio_text(1, ratio), "market": "台股" if sym.endswith(".TW") else "美股"})
     return out
+
+
+@section("股票分割", list)
+def splits():
+    out = []
+    for name, fn in (("美股分割行事曆", split_us), ("台股分割公告", split_tw), ("分割追蹤清單", split_watchlist)):
+        try:
+            out += fn()
+        except Exception as e:  # noqa: BLE001
+            ERRORS.append(f"{name}: {type(e).__name__}: {e}")
+    lo, hi = (TODAY - dt.timedelta(days=30)).isoformat(), (TODAY + dt.timedelta(days=90)).isoformat()
+    seen, res = set(), []
+    for x in sorted(out, key=lambda x: x["date"]):
+        k = (x["code"].replace(".TW", ""), x["date"])
+        if k in seen or not (lo <= x["date"] <= hi):
+            continue
+        seen.add(k)
+        x["upcoming"] = x["date"] >= TODAY.isoformat()
+        res.append(x)
+    # 即將生效的排前面（近到遠），再接已生效（新到舊）
+    up = [x for x in res if x["upcoming"]]
+    done = sorted((x for x in res if not x["upcoming"]), key=lambda x: x["date"], reverse=True)
+    return up + done
 
 
 # ---------- 資訊：申購抽籤 ----------

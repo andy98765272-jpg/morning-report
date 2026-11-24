@@ -206,10 +206,15 @@ function pageInfo() {
       <span class="num" style="font-size:13px;text-align:right">${ui.divTab === 'TW' ? fmt(x.cash, 2) + ' 元' : '$' + fmt(x.cash, 2)}</span>
       <span class="num" style="font-size:13px;font-weight:600;text-align:right;color:${AMB}">${x.yield == null ? '—' : fmt(x.yield, 1) + '%'}</span>
     </div>`).join('');
-  const splits = (I.splits || []).map((s) => `
-    <div class="lrow" style="min-height:52px"><div class="col" style="flex:1"><span class="num" style="font-size:14px;font-weight:600">${esc(s.code)}</span><span class="num lbl">生效 ${esc(s.date)}</span></div><span class="num" style="font-size:15px;font-weight:700">${esc(s.ratio)}</span></div>`).join('');
-  const ST = { open: ['申購中', UP], soon: ['即將開始', AMB], closed: ['已截止', MUT] };
   const pill = (c) => `font-size:11px;font-weight:600;color:${c};border:1px solid ${c}66;border-radius:999px;padding:1px 8px;white-space:nowrap`;
+  const splits = (I.splits || []).slice(0, 15).map((s) => `
+    <div class="lrow" style="min-height:56px;gap:10px">
+      <div class="col" style="flex:1;min-width:0;gap:2px"><span style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span class="num">${esc(s.code)}</span>${s.name ? ` <span class="lbl" style="font-weight:400">${esc(s.name)}</span>` : ''}</span>
+        <span class="num small"><span style="color:${s.market === '台股' ? UP : BLUE}">${esc(s.market || '')}</span> · ${s.upcoming ? '生效日' : '已生效'} ${esc(s.date)}</span></div>
+      <span class="num" style="font-size:15px;font-weight:700">${esc(s.ratio)}</span>
+      <span style="${pill(s.upcoming ? AMB : MUT)}">${s.upcoming ? '即將生效' : '已生效'}</span>
+    </div>`).join('');
+  const ST = { open: ['申購中', UP], soon: ['即將開始', AMB], closed: ['已截止', MUT] };
   const lots = (I.lottery || []).map((l) => `
     <div class="card pad col" style="gap:10px">
       <div class="row" style="gap:8px"><span style="font-size:15px;font-weight:600">${esc(l.name)} <span class="num small" style="font-size:12px;font-weight:400">${esc(l.code)}</span></span><span style="${pill(ST[l.status][1])}">${ST[l.status][0]}</span><span class="num" style="margin-left:auto;font-size:16px;font-weight:700;color:${clr(l.gainPct)}">${l.gainPct == null ? '—' : sg(l.gainPct, 1) + '%'}</span></div>
@@ -230,7 +235,7 @@ function pageInfo() {
     <section class="sec"><div class="sech"><h2>配息資訊</h2><div class="seg"><button data-act="div" data-v="TW" class="${ui.divTab === 'TW' ? 'on' : ''}">台股</button><button data-act="div" data-v="US" class="${ui.divTab === 'US' ? 'on' : ''}">美股</button></div></div>
       <div class="card" style="padding:6px 14px"><div class="tbl small" style="grid-template-columns:minmax(0,1fr) 52px 64px 52px;padding:6px 0"><span>股票</span><span style="text-align:right">除息日</span><span style="text-align:right">${ui.divTab === 'TW' ? '現金股利' : '每股配息'}</span><span style="text-align:right">殖利率</span></div>${divRows || '<div class="empty">暫無資料</div>'}</div>
       <span class="small" style="margin:0 4px">橘色除息日 = 7 天內除息${ui.divTab === 'US' ? ' · 美股為追蹤清單' : ' · 殖利率以最近收盤價計'}</span></section>
-    <section class="sec"><div class="sech"><h2>股票分割</h2><span class="hint">追蹤清單 · 近一年</span></div><div class="card list">${splits || '<div class="empty">追蹤清單近一年沒有分割</div>'}</div></section>
+    <section class="sec"><div class="sech"><h2>股票分割</h2><span class="hint">近 30 天與未來 90 天</span></div><div class="card list">${splits || '<div class="empty">近期沒有分割</div>'}</div></section>
     <section class="sec"><div class="sech"><h2>申購抽籤</h2><span class="hint">依價差報酬排序</span></div>${lots || emptyBox('近期沒有公開申購')}
       <span class="small" style="margin:0 4px">每張價差 =（市價 − 承銷價）× 申購股數 · 未扣手續費</span></section>`;
 }
