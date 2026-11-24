@@ -3,7 +3,7 @@ const UP = '#F0525B', DN = '#2EBD85', AMB = '#F5B544', BLUE = '#6FA8FF', MUT = '
 const app = document.getElementById('app');
 let D = null;
 const kcache = {};
-const ui = { newsCat: 'all', divTab: 'TW', ratioTab: 'trust', instSeg: 0, oiSeg: 0, instSel: null, oiSel: null, period: 'D', sel: null, offset: 0, sym: null };
+const ui = { newsCat: 'all', divTab: 'TW', ratioTab: 'trust', ratioP: 1, ratioSide: 'buy', chipSeg: 1, chipSel: null, instSeg: 0, oiSeg: 0, instSel: null, oiSel: null, period: 'D', sel: null, offset: 0, sym: null };
 
 // ---------- 工具 ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -119,26 +119,33 @@ function pageTW() {
     }).join('');
   }
   const R = t.ratios || {};
-  const list = R[ui.ratioTab] || [];
-  const rows = list.map((it, i) => `
-    <a class="tbl" href="#/s/${encodeURIComponent(it.sym)}" style="grid-template-columns:20px minmax(0,1fr) 48px 64px 52px;min-height:48px;border-top:1px solid var(--line)">
+  const RQ = R.quotes || {};
+  const list = ((R.lists || {})[`${ui.ratioTab}|${ui.ratioP}|${ui.ratioSide}`]) || [];
+  const RG = 'grid-template-columns:18px minmax(0,1fr) 64px 82px 56px';
+  const rows = list.map((it, i) => { const q = RQ[it.sym] || {}; return `
+    <a class="tbl" href="#/s/${encodeURIComponent(it.sym)}" style="${RG};min-height:54px;border-top:1px solid var(--line)">
       <span class="num small" style="font-size:13px">${i + 1}</span>
-      <div class="col" style="min-width:0"><span style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</span><span class="num small">${esc(it.code)} <span style="color:${clr(it.pct)}">${sg(it.pct, 1)}%</span></span></div>
-      <div style="width:48px">${spark(it.spark, it.sparkPrev, 100, 22)}</div>
-      <span class="num" style="font-size:13px;text-align:right;color:${UP}">+${fmt(it.lots, 0)}</span>
-      <span class="num" style="font-size:14px;font-weight:600;text-align:right;color:${AMB}">${fmt(it.ratio, 2)}%</span>
-    </a>`).join('');
+      <div class="col" style="min-width:0"><span style="font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.name)}</span><span class="num small">${esc(it.code)}</span></div>
+      <div class="col right"><span class="num" style="font-size:15px;font-weight:600;color:${AMB}">${fmt(it.ratio, 2)}%</span><span class="num small" style="color:${clr(it.lots)}">${sg(it.lots, 0)} 張</span></div>
+      <div class="col right"><span class="num" style="font-size:15px;font-weight:600;color:${clr(q.chg)}">${fmt(q.price)}</span><span class="num" style="font-size:11px;color:${clr(q.chg)}">${q.chg == null ? '—' : `${q.chg >= 0 ? '▲' : '▼'}${fmt(Math.abs(q.chg))}(${fmt(Math.abs(q.pct))}%)`}</span></div>
+      <div style="width:56px">${spark(q.spark, q.sparkPrev, 100, 26)}</div>
+    </a>`; }).join('');
   const rlabel = ui.ratioTab === 'trust' ? '投本比' : '外本比';
+  const lastD = (R.dates || []).slice(-1)[0];
   return header('台股', `${genDate()} · 台股盤前`) + `
     <section class="sec"><div class="grid2">${idxCard(tx, '#/s/%5ETWII', '加權指數', tx ? `成交量 ${volFmt(tx.vol, tx.sym)}` : '')}${idxCard(nt, '#/s/TX_NIGHT', '台指期夜盤', basis)}</div></section>
     <section class="sec"><div class="sech"><h2>三大法人買賣超 <span class="hint" style="font-weight:400">億元</span></h2><a class="more" href="#/inst">每日明細 ›</a></div><a class="card pad col" style="gap:12px" href="#/inst">${instHtml}</a></section>
     <section class="sec"><div class="sech"><h2>台指期未平倉 <span class="hint" style="font-weight:400">淨口數</span></h2><a class="more" href="#/oi">每日明細 ›</a></div><a class="card list" style="display:block" href="#/oi">${oiHtml}</a></section>
-    <section class="sec"><div class="sech"><h2>籌碼比率 前 10 名</h2><div class="seg"><button data-act="ratio" data-v="trust" class="${ui.ratioTab === 'trust' ? 'on' : ''}">投本比</button><button data-act="ratio" data-v="foreign" class="${ui.ratioTab === 'foreign' ? 'on' : ''}">外本比</button></div></div>
+    <section class="sec"><div class="sech"><h2>籌碼排行</h2><div class="seg"><button data-act="ratio" data-v="trust" class="${ui.ratioTab === 'trust' ? 'on' : ''}">投本比</button><button data-act="ratio" data-v="foreign" class="${ui.ratioTab === 'foreign' ? 'on' : ''}">外本比</button></div></div>
+      <div class="row" style="gap:4px;justify-content:space-between">
+        <div class="seg">${(R.periods || [1, 3, 5, 10, 20]).map((p) => `<button data-act="ratioP" data-v="${p}" class="${ui.ratioP === p ? 'on' : ''}" style="min-width:40px">${p}日</button>`).join('')}</div>
+        <div class="seg"><button data-act="ratioSide" data-v="buy" class="${ui.ratioSide === 'buy' ? 'on' : ''}" style="min-width:36px">買</button><button data-act="ratioSide" data-v="sell" class="${ui.ratioSide === 'sell' ? 'on' : ''}" style="min-width:36px">賣</button></div>
+      </div>
       <div class="card" style="padding:6px 14px">
-        <div class="tbl small" style="grid-template-columns:20px minmax(0,1fr) 48px 64px 52px;padding:6px 0"><span>#</span><span>股票</span><span style="text-align:center">今日</span><span style="text-align:right">${ui.ratioTab === 'trust' ? '投信' : '外資'}買超(張)</span><span style="text-align:right">${rlabel}</span></div>
+        <div class="tbl small" style="${RG};padding:6px 0"><span></span><span>股票</span><span style="text-align:right;color:${AMB}">${rlabel}(%)</span><span style="text-align:right">股價</span><span style="text-align:center">走勢</span></div>
         ${rows || '<div class="empty">暫無資料</div>'}
       </div>
-      <span class="small" style="margin:0 4px">${rlabel} = 近 ${(R.days || []).length || 5} 日買超股數 ÷ 已發行股數 · 點個股看 K 線</span></section>`;
+      <span class="small" style="margin:0 4px">${rlabel} = 近 ${ui.ratioP} 日${ui.ratioTab === 'trust' ? '投信' : '外資'}${ui.ratioSide === 'buy' ? '買超' : '賣超'}股數 ÷ 已發行股數 · 資料日 ${md(lastD)} · 點個股看 K 線與法人明細</span></section>`;
 }
 
 // ---------- 法人、未平倉每日明細 ----------
@@ -276,7 +283,8 @@ function findQuote(sym) {
   const u = D.us || {}, t = D.tw || {};
   const pools = [u.indices, u.hot, u.adrs, [t.taiex, t.night]];
   for (const p of pools) for (const q of p || []) if (q && q.sym === sym) return q;
-  for (const k of ['trust', 'foreign']) for (const q of (t.ratios || {})[k] || []) if (q.sym === sym) return { ...q, name: q.name };
+  const R = t.ratios || {};
+  if (R.names && R.names[sym]) return { sym, name: R.names[sym], ...((R.quotes || {})[sym] || {}) };
   return null;
 }
 function aggregate(daily, p) {
@@ -393,13 +401,7 @@ function pageDetail(sym) {
         <div style="position:absolute;left:0;right:0;bottom:${(v5 / vmax * 100).toFixed(1)}%;border-top:1.5px dashed ${AMB}"></div>
         <div style="position:absolute;left:0;right:0;bottom:${(v10 / vmax * 100).toFixed(1)}%;border-top:1.5px dashed ${BLUE}"></div></div>
       <span class="small">近 10 個交易日 · 最右為最新</span></div></div>
-    ${chips ? `<div class="sec"><div class="card pad col" style="gap:10px"><b style="font-size:14px">法人籌碼 · 近 ${(D.tw.ratios.days || []).length} 日</b>
-      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">
-        <div class="stat"><span class="small">投信(張)</span><b class="num" style="font-size:15px;color:${clr(chips.trust)}">${sg(chips.trust, 0)}</b></div>
-        <div class="stat"><span class="small">外資(張)</span><b class="num" style="font-size:15px;color:${clr(chips.foreign)}">${sg(chips.foreign, 0)}</b></div>
-        <div class="stat"><span class="small">投本比</span><b class="num" style="font-size:15px;color:${AMB}">${fmt(chips.trustRatio, 2)}%</b></div>
-        <div class="stat"><span class="small">外本比</span><b class="num" style="font-size:15px;color:${AMB}">${fmt(chips.foreignRatio, 2)}%</b></div>
-      </div></div></div>` : ''}
+    ${chips ? chipsCard(sym, chips) : ''}
     <div class="sec"><div class="card pad col" style="gap:12px">
       <div class="row" style="justify-content:space-between;align-items:baseline"><b style="font-size:14px">近一年高低</b><span class="lbl">一年報酬 <b class="num" style="color:${clr(ret)};font-size:15px">${sg(ret, 1)}%</b></span></div>
       <div style="position:relative;height:8px;border-radius:999px;background:linear-gradient(90deg,${DN},#3A4250,${UP})"><div style="position:absolute;left:calc(${pos.toFixed(1)}% - 2px);top:-5px;width:4px;height:18px;border-radius:2px;background:#fff"></div></div>
@@ -407,6 +409,34 @@ function pageDetail(sym) {
         <div class="stat"><span class="small">一年最低 · ${md(loR[0])}</span><b class="num" style="color:${DN}">${fmt(loR[3], dd)}</b><span class="num small">距低點 ${sg((price / loR[3] - 1) * 100, 1)}%</span></div>
         <div class="stat right"><span class="small">一年最高 · ${md(hiR[0])}</span><b class="num" style="color:${UP}">${fmt(hiR[2], dd)}</b><span class="num small">距高點 ${sg((price / hiR[2] - 1) * 100, 1)}%</span></div>
       </div></div></div>`;
+}
+function chipsCard(sym, c) {
+  const dates = (D.tw.ratios.dates || []), N = dates.length;
+  const names = ['外資', '投信', '自營商'], keys = ['foreign', 'trust', 'dealer'];
+  const seg = ui.chipSeg, S = c[keys[seg]] || [];
+  const cum = S.reduce((a, b) => a + b, 0), today = S[N - 1];
+  const max = Math.max(...S.map(Math.abs), 1), W = 100 / N;
+  const sel = ui.chipSel == null || ui.chipSel >= N ? N - 1 : ui.chipSel;
+  const bars = S.map((v, i) => { const h = Math.abs(v) / max * 46; return `<rect x="${(i * W + W * 0.18).toFixed(2)}" y="${v >= 0 ? 50 - h : 50}" width="${(W * 0.64).toFixed(2)}" height="${Math.max(h, 0.4).toFixed(2)}" fill="${clr(v)}" opacity="${i === sel ? 1 : 0.6}"/><rect x="${(i * W).toFixed(2)}" y="0" width="${W.toFixed(2)}" height="100" fill="transparent" data-act="chipSel" data-v="${i}" style="cursor:pointer"/>`; }).join('');
+  const sh = c.shares ? c.shares / 1000 : null;
+  const ratio = (arr, p) => (sh ? arr.slice(-p).reduce((a, b) => a + b, 0) / sh * 100 : null);
+  const rows = [];
+  for (let i = N - 1; i >= Math.max(0, N - 10); i--) {
+    const v = keys.map((k) => c[k][i]), tot = v[0] + v[1] + v[2];
+    rows.push(`<div class="tbl" style="grid-template-columns:44px repeat(4,minmax(0,1fr));min-height:40px;border-top:1px solid var(--line)"><span class="num lbl">${md(dates[i])}</span>${[...v, tot].map((x, k) => `<span class="num" style="text-align:right;font-size:13px;font-weight:${k === seg ? 700 : 500};color:${clr(x)}">${fmt(x, 0)}</span>`).join('')}</div>`);
+  }
+  return `<div class="sec"><div class="card pad col" style="gap:10px">
+    <div class="row" style="justify-content:space-between"><b style="font-size:14px">三大法人</b><div class="seg" style="background:var(--bg)">${names.map((n, i) => `<button data-act="chipSeg" data-v="${i}" class="${i === seg ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+      <div class="stat"><span class="small">近 ${N} 日累計</span><b class="num" style="color:${clr(cum)}">${sg(cum, 0)} 張</b></div>
+      <div class="stat"><span class="small">${md(dates[sel])} 買賣超</span><b class="num" style="color:${clr(S[sel])}">${sg(S[sel], 0)} 張</b></div>
+      <div class="stat"><span class="small">${seg === 1 ? '投本比' : seg === 0 ? '外本比' : '佔股本'} 1/5/20日</span><b class="num" style="font-size:12px;color:${AMB}">${[1, 5, 20].map((p) => (ratio(S, p) == null ? '—' : fmt(ratio(S, p), 2))).join(' / ')}%</b></div>
+    </div>
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" width="100%" height="110"><path d="M0 50 H100" stroke="#3A4250" vector-effect="non-scaling-stroke"/>${bars}</svg>
+    <div class="row num small" style="justify-content:space-between"><span>${md(dates[0])}</span><span>點長條看當日</span><span>${md(dates[N - 1])}</span></div>
+    <b style="font-size:13px;margin-top:4px">近 10 日三大法人買賣超明細（張）</b>
+    <div><div class="tbl small" style="grid-template-columns:44px repeat(4,minmax(0,1fr));padding:4px 0"><span>日期</span><span style="text-align:right">外資</span><span style="text-align:right">投信</span><span style="text-align:right">自營商</span><span style="text-align:right">合計</span></div>${rows.join('')}</div>
+  </div></div>`;
 }
 const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
@@ -522,6 +552,10 @@ app.addEventListener('click', (e) => {
   if (!el) return;
   const a = el.dataset.act, v = el.dataset.v;
   if (a === 'ratio') ui.ratioTab = v;
+  else if (a === 'ratioP') ui.ratioP = +v;
+  else if (a === 'ratioSide') ui.ratioSide = v;
+  else if (a === 'chipSeg') { ui.chipSeg = +v; ui.chipSel = null; }
+  else if (a === 'chipSel') ui.chipSel = +v;
   else if (a === 'news') ui.newsCat = v;
   else if (a === 'div') ui.divTab = v;
   else if (a === 'period') { ui.period = v; ui.sel = null; ui.offset = 0; }
@@ -551,7 +585,7 @@ async function render(scrollTop = true) {
   let html;
   if (page === 's') {
     const sym = rest.join('/');
-    if (ui.sym !== sym) { ui.sym = sym; ui.sel = null; ui.offset = 0; }
+    if (ui.sym !== sym) { ui.sym = sym; ui.sel = null; ui.offset = 0; ui.chipSel = null; }
     if (!(sym in kcache)) { app.innerHTML = pageDetail(sym); await loadK(sym); }
     html = pageDetail(sym);
   } else if (page === 'tw') html = pageTW();

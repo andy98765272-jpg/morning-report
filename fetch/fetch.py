@@ -394,52 +394,116 @@ def futures_oi_fetch():
 
 
 # ---------- 台股：投本比、外本比 ----------
+def t86_history(n_days=20):
+    """證交所 T86 個股三大法人買賣超，逐日快取在 hist/t86.json，每天只需補抓新的日子。
+    回傳 (日期由舊到新, {日期: {代號: [外資, 投信, 自營商] 股數}}, {代號: 名稱})"""
+    path = os.path.join(HDIR, "t86.json")
+    cache = load(path, {"days": {}, "names": {}})
+    days, names = cache["days"], cache["names"]
+    d, got, misses = TODAY, [], 0
+    while len(got) < n_days and (TODAY - d).days < n_days * 2 + 10:
+        key = d.isoformat()
+        if d.weekday() < 5:
+            if key in days:
+                got.append(key)
+            elif misses < 40:
+                misses += 1
+                rows = table(twse(f"https://www.twse.com.tw/rwd/zh/fund/T86?date={d:%Y%m%d}&selectType=ALLBUT0999&response=json"))
+                if rows:
+                    day = {}
+                    for r in rows:
+                        code = str(col(r, "證券代號")).strip()
+                        names[code] = str(col(r, "證券名稱")).strip()
+                        f = (num(col(r, "外陸資買賣超股數")) or 0) + (num(r.get("外資自營商買賣超股數")) or 0)
+                        t = num(col(r, "投信買賣超股數")) or 0
+                        dl = num(r.get("自營商買賣超股數")) if "自營商買賣超股數" in r else num(col(r, "自營商買賣超股數"))
+                        day[code] = [int(f), int(t), int(dl or 0)]
+                    days[key] = day
+                    got.append(key)
+        d -= dt.timedelta(days=1)
+    keep = sorted(days)[-(n_days + 5):]
+    cache = {"days": {k: days[k] for k in keep}, "names": names}
+    save(path, cache)
+    return sorted(got), cache["days"], names
+
+
+def batch_quotes(syms):
+    """一次下載多檔：寫 K 線檔（5 年日線＋當日 5 分線），回傳價格、漲跌、走勢。"""
+    out = {}
+    if not syms:
+        return out
+    daily_df = yf.download(syms, period="5y", interval="1d", group_by="ticker", auto_adjust=False,
+                           threads=True, progress=False)
+    try:
+        intra_df = yf.download(syms, period="1d", interval="5m", group_by="ticker", auto_adjust=False,
+                               threads=True, progress=False)
+    except Exception as e:  # noqa: BLE001
+        ERRORS.append(f"排行個股分時: {e}")
+        intra_df = None
+    for sym in syms:
+        try:
+            df = daily_df[sym] if len(syms) > 1 else daily_df
+            rows = []
+            for idx, r in df.iterrows():
+                if any(pd.isna(r[c]) for c in ("Open", "High", "Low", "Close")):
+                    continue
+                rows.append([idx.strftime("%Y-%m-%d"), r2(r["Open"], 4), r2(r["High"], 4), r2(r["Low"], 4),
+                             r2(r["Close"], 4), int(0 if pd.isna(r["Volume"]) else r["Volume"])])
+            pts = []
+            if intra_df is not None:
+                idf = intra_df[sym] if len(syms) > 1 else intra_df
+                for idx, r in idf.iterrows():
+                    if not pd.isna(r["Close"]):
+                        pts.append([idx.tz_convert(TPE).strftime("%H:%M") if idx.tzinfo else idx.strftime("%H:%M"), r2(r["Close"], 4)])
+            sm = summarize(rows, pts)
+            if not sm:
+                continue
+            save(os.path.join(KDIR, fname(sym) + ".json"),
+                 {"sym": sym, "name": "", "daily": rows, "intraday": {"prev": sm["prev"], "pts": pts}})
+            out[sym] = {"price": sm["price"], "chg": sm["chg"], "pct": sm["pct"], "spark": sm["spark"], "sparkPrev": sm["sparkPrev"]}
+        except Exception as e:  # noqa: BLE001
+            ERRORS.append(f"排行個股 {sym}: {type(e).__name__}: {e}")
+    return out
+
+
 @section("投本比外本比", lambda: None)
 def ratios():
-    days = CFG.get("ratio_days", 5)
+    periods = [1, 3, 5, 10, 20]
+    top_n = CFG.get("ratio_top", 10)
     shares = {}
     for r in get_json("https://openapi.twse.com.tw/v1/opendata/t187ap03_L"):
         code = str(col(r, "公司代號") or "").strip()
         sh = num(col(r, "已發行普通股數"))
         if code and sh:
             shares[code] = sh
-    acc, names, got, d = {}, {}, [], TODAY
-    while len(got) < days and (TODAY - d).days < 20:
-        if d.weekday() < 5:
-            rows = table(twse(f"https://www.twse.com.tw/rwd/zh/fund/T86?date={d:%Y%m%d}&selectType=ALLBUT0999&response=json"))
-            if rows:
-                got.append(d.isoformat())
-                for r in rows:
-                    code = str(col(r, "證券代號")).strip()
-                    names[code] = str(col(r, "證券名稱")).strip()
-                    f = num(col(r, "外陸資買賣超股數")) or 0
-                    t = num(col(r, "投信買賣超股數")) or 0
-                    a = acc.setdefault(code, [0.0, 0.0])
-                    a[0] += f
-                    a[1] += t
-        d -= dt.timedelta(days=1)
-    def top(i):
-        lst = [(c, v[i], v[i] / shares[c] * 100) for c, v in acc.items() if c in shares and v[i] > 0]
-        lst.sort(key=lambda x: x[2], reverse=True)
-        return lst[: CFG.get("ratio_top", 10)]
-    out = {"days": got, "trust": [], "foreign": []}
+    dates, days, names = t86_history(max(periods))
+    if not dates:
+        raise ValueError("沒有抓到任何一天的 T86 資料")
+    lists, union = {}, set()
+    for p in periods:
+        use = dates[-p:]
+        acc = {}
+        for dkey in use:
+            for code, v in days[dkey].items():
+                a = acc.setdefault(code, [0, 0])
+                a[0] += v[0]
+                a[1] += v[1]
+        for kind, k in (("foreign", 0), ("trust", 1)):
+            cand = [(c, v[k], v[k] / shares[c] * 100) for c, v in acc.items() if c in shares and v[k]]
+            buy = sorted((x for x in cand if x[1] > 0), key=lambda x: x[2], reverse=True)[:top_n]
+            sell = sorted((x for x in cand if x[1] < 0), key=lambda x: x[2])[:top_n]
+            for side, lst in (("buy", buy), ("sell", sell)):
+                lists[f"{kind}|{p}|{side}"] = [{"code": c, "sym": f"{c}.TW", "name": names.get(c, c),
+                                                "lots": round(net / 1000), "ratio": r2(ratio, 3)} for c, net, ratio in lst]
+                union.update(c for c, _, _ in lst)
+    quotes = batch_quotes(sorted(f"{c}.TW" for c in union))
+    # 每檔近 20 日三大法人（張），給個股頁的「三大法人」分頁用
     chips = {}
-    for key, i in (("trust", 1), ("foreign", 0)):
-        for code, net, ratio in top(i):
-            sym = f"{code}.TW"
-            q = section(f"排行個股 {sym}")(quote)(sym, names.get(code, code))
-            item = {"code": code, "sym": sym, "name": names.get(code, code),
-                    "lots": round(net / 1000), "ratio": r2(ratio, 3)}
-            if q:
-                item.update({"price": q["price"], "pct": q["pct"], "spark": q["spark"], "sparkPrev": q["sparkPrev"]})
-            out[key].append(item)
-    for code, v in acc.items():
-        if code in shares and any(code == x["code"] for k in ("trust", "foreign") for x in out[k]):
-            chips[f"{code}.TW"] = {"trust": round(v[1] / 1000), "foreign": round(v[0] / 1000),
-                                   "trustRatio": r2(v[1] / shares[code] * 100, 3),
-                                   "foreignRatio": r2(v[0] / shares[code] * 100, 3)}
-    out["chips"] = chips
-    return out
+    for c in union:
+        ser = [[round(days[dkey].get(c, [0, 0, 0])[i] / 1000) for dkey in dates] for i in range(3)]
+        chips[f"{c}.TW"] = {"foreign": ser[0], "trust": ser[1], "dealer": ser[2], "shares": shares.get(c)}
+    return {"dates": dates, "periods": periods, "lists": lists, "quotes": quotes, "chips": chips,
+            "names": {f"{c}.TW": names.get(c, c) for c in union}}
 
 
 # ---------- 資訊：新聞 ----------
