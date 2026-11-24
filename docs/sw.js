@@ -1,5 +1,5 @@
 // 外殼離線快取；資料一律先抓網路，失敗才用快取
-const CACHE = 'mr-v1';
+const CACHE = 'mr-v2';
 const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon.svg'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))); self.clients.claim(); });

@@ -48,7 +48,7 @@ function spark(vals, prev, w = 100, h = 32, color) {
 }
 
 function header(title, sub) {
-  return `<header class="hdr"><div class="row"><span class="sub">${esc(sub)}</span>${D && D.errors && D.errors.length ? `<a class="badge" href="#/settings">${D.errors.length} 個來源異常</a>` : ''}</div><h1>${esc(title)}</h1></header>`;
+  return `<header class="hdr"><div class="row"><span class="sub">${esc(sub)}</span>${D && D.errors && D.errors.length ? `<a class="badge" href="#/settings">${D.errors.length} 個來源異常</a>` : ''}</div><div class="row" style="justify-content:space-between"><h1>${esc(title)}</h1>${refreshBtn()}</div></header>`;
 }
 function genDate() {
   if (!D) return '';
@@ -244,6 +244,22 @@ function pageSettings() {
       <span class="lbl">每天台北時間 07:00 自動更新。報價為收盤資料，非即時。</span>
       <button data-act="reload" style="margin-top:6px;min-height:44px;border:0;border-radius:10px;background:var(--amb);color:#141413;font-weight:700;font-size:14px;cursor:pointer">重新載入</button>
     </div></section>
+    <section class="sec"><div class="sech"><h2>更新鈕設定</h2><span class="hint">${getToken() ? '已設定' : '尚未設定'}</span></div>
+      <div class="card pad col" style="gap:10px">
+        <span class="lbl" style="line-height:1.6">按右上角的更新鈕，會請 GitHub 立刻重抓資料，約 5～8 分鐘後自動顯示新資料。需要先設定一次 GitHub 權杖（只存在這支手機裡，不會上傳）。</span>
+        <ol class="lbl" style="margin:0;padding-left:20px;line-height:1.7">
+          <li>打開 <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" style="color:var(--amb)">GitHub 建立權杖頁面</a></li>
+          <li>Token name 填「晨報更新」，Expiration 選 1 年（或自訂）</li>
+          <li>Repository access 選「Only select repositories」→ 勾 ${esc(REPO.name)}</li>
+          <li>Permissions → Repository permissions →「Actions」選「Read and write」</li>
+          <li>按「Generate token」，複製 github_pat_ 開頭的權杖貼到下面</li>
+        </ol>
+        <input id="tok" type="password" autocomplete="off" placeholder="${getToken() ? '已儲存（貼上新的可覆蓋）' : 'github_pat_…'}" style="min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--tx);padding:0 12px;font-size:14px">
+        <div class="row" style="gap:8px">
+          <button data-act="tok-save" style="flex:1;min-height:44px;border:0;border-radius:10px;background:var(--amb);color:#141413;font-weight:700;font-size:14px;cursor:pointer">儲存</button>
+          <button data-act="tok-clear" style="flex:1;min-height:44px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--mut);font-weight:600;font-size:14px;cursor:pointer">清除權杖</button>
+        </div>
+      </div></section>
     <section class="sec"><div class="sech"><h2>資料來源狀態</h2><span class="hint">${(D.errors || []).length ? `${D.errors.length} 個異常` : '全部正常'}</span></div>
       <div class="card list">${errs || '<div class="empty">上次更新所有來源都成功</div>'}</div></section>
     <section class="sec"><span class="small" style="margin:0 4px;line-height:1.6">資料來源：證交所、期交所、櫃買中心、公開資訊觀測站公開資料；美股與 K 線來自 Yahoo Finance；新聞來自 RSS。僅供參考，不構成投資建議。</span></section>`;
@@ -429,6 +445,72 @@ function pickCandle(clientX, rect, n) {
   if (i !== ui.sel) { ui.sel = i; redrawK(); }
 }
 
+// ---------- 更新鈕：觸發 GitHub Actions 重抓資料 ----------
+const REPO = (() => {
+  const owner = location.hostname.endsWith('.github.io') ? location.hostname.split('.')[0] : 'andy98765272-jpg';
+  const name = location.pathname.split('/').filter(Boolean)[0] || 'morning-report';
+  return { owner, name };
+})();
+const API = `https://api.github.com/repos/${REPO.owner}/${REPO.name}/actions/workflows/daily.yml`;
+const upd = { state: 'idle', msg: '', url: '' };
+function getToken() { try { return localStorage.getItem('mr_token') || ''; } catch { return ''; } }
+function setToken(v) { try { v ? localStorage.setItem('mr_token', v) : localStorage.removeItem('mr_token'); } catch {} }
+function refreshBtn() {
+  const busy = upd.state !== 'idle';
+  return `<button data-act="refresh" aria-label="更新資料" ${busy ? 'disabled' : ''} style="display:flex;align-items:center;gap:6px;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid ${busy ? '#5A4A26' : 'var(--line)'};background:var(--card);color:${busy ? AMB : 'var(--tx2)'};font-size:13px;font-weight:600;cursor:pointer">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" ${busy ? 'style="animation:spin 1s linear infinite"' : ''}><path d="M20 12a8 8 0 1 1-2.3-5.6 M20 4v5h-5"/></svg>${busy ? '更新中' : '更新'}</button>`;
+}
+let toastTimer;
+function toast(text, kind = 'info', sticky = false) {
+  let el = document.getElementById('toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
+  el.style.cssText = `position:fixed;left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top));z-index:20;max-width:min(92vw,480px);padding:10px 16px;border-radius:12px;font-size:13px;line-height:1.5;box-shadow:0 6px 24px #0008;background:${kind === 'err' ? '#3A1C20' : '#262C36'};color:${kind === 'err' ? '#FFB4B8' : kind === 'ok' ? '#B7F0D6' : 'var(--tx)'};border:1px solid ${kind === 'err' ? '#6B2A30' : 'var(--line)'}`;
+  el.innerHTML = text;
+  clearTimeout(toastTimer);
+  if (!sticky) toastTimer = setTimeout(() => el.remove(), 4000);
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function setUpd(state, msg) { upd.state = state; upd.msg = msg; document.querySelectorAll('[data-act=refresh]').forEach((b) => { b.outerHTML = refreshBtn(); }); if (msg) toast(msg, 'info', state !== 'idle'); }
+async function gh(path, opt = {}) {
+  return fetch(API + path, { ...opt, headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${getToken()}`, 'X-GitHub-Api-Version': '2022-11-28', ...(opt.headers || {}) } });
+}
+async function startUpdate() {
+  if (upd.state !== 'idle') return;
+  if (!getToken()) { toast('第一次使用要先設定權杖，已帶你到設定頁', 'info'); location.hash = '#/settings'; return; }
+  const before = D && D.generated, t0 = Date.now();
+  setUpd('dispatch', '正在請 GitHub 開始更新…');
+  try {
+    const r = await gh('/dispatches', { method: 'POST', body: JSON.stringify({ ref: 'main' }) });
+    if (r.status === 401 || r.status === 403 || r.status === 404) throw new Error('權杖無效、過期或權限不足，請到設定頁重新設定（Actions 需要 Read and write）');
+    if (!r.ok) throw new Error(`GitHub 回應 ${r.status}`);
+    let run = null;
+    for (let i = 0; i < 80; i++) {
+      await sleep(i < 4 ? 5000 : 15000);
+      const j = await (await gh('/runs?event=workflow_dispatch&per_page=1')).json();
+      run = (j.workflow_runs || [])[0];
+      if (!run || new Date(run.created_at).getTime() < t0 - 60000) { setUpd('wait', '等待 GitHub 排程…'); continue; }
+      const min = Math.floor((Date.now() - t0) / 60000);
+      if (run.status !== 'completed') { setUpd('run', `抓資料中（已 ${min} 分鐘，通常 5 分鐘左右）`); continue; }
+      if (run.conclusion !== 'success') throw new Error(`這次抓資料失敗，<a href="${run.html_url}" target="_blank" rel="noopener" style="color:${AMB}">看詳細</a>`);
+      break;
+    }
+    if (!run || run.status !== 'completed') throw new Error('等太久了，請稍後按設定頁的「重新載入」');
+    setUpd('deploy', '資料已抓好，等網頁發布（約 1 分鐘）…');
+    for (let i = 0; i < 24; i++) {
+      await sleep(10000);
+      try {
+        const nd = await (await fetch(`data/latest.json?t=${Date.now()}`, { cache: 'no-store' })).json();
+        if (nd.generated !== before) { D = nd; for (const k in kcache) delete kcache[k]; setUpd('idle', ''); render(false); toast(`已更新到 ${esc(nd.generated.slice(5, 16).replace('T', ' '))}`, 'ok'); return; }
+      } catch {}
+    }
+    throw new Error('網頁發布比較慢，過幾分鐘按「重新載入」就會看到新資料');
+  } catch (e) {
+    setUpd('idle', '');
+    toast(e.message || String(e), 'err', true);
+    setTimeout(() => { const el = document.getElementById('toast'); el && el.addEventListener('click', () => el.remove(), { once: true }); }, 0);
+  }
+}
+
 // ---------- 事件、路由 ----------
 app.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]');
@@ -441,6 +523,9 @@ app.addEventListener('click', (e) => {
   else if (a === 'dseg') { ui[el.dataset.k] = +v; ui[el.dataset.k.replace('Seg', 'Sel')] = null; }
   else if (a === 'dsel') ui[el.dataset.k] = +v;
   else if (a === 'reload') { load(true); return; }
+  else if (a === 'refresh') { startUpdate(); return; }
+  else if (a === 'tok-save') { const v = document.getElementById('tok').value.trim(); if (v) { setToken(v); toast('權杖已儲存，可以按更新鈕了', 'ok'); } }
+  else if (a === 'tok-clear') { setToken(''); toast('已清除權杖', 'ok'); }
   render(false);
 });
 
