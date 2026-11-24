@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0E1116">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="晨報">
+<title>每日晨報</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+:root{--bg:#0E1116;--card:#171B22;--line:#222833;--tx:#E8ECF2;--tx2:#C7CEDA;--mut:#9AA4B2;--mut2:#8691A1;--up:#F0525B;--dn:#2EBD85;--amb:#F5B544;--blue:#6FA8FF}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--tx);font-family:'Noto Sans TC',Inter,system-ui,sans-serif}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit}
+.num{font-family:Inter,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+#app{max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+.hdr{padding:calc(20px + env(safe-area-inset-top)) 20px 12px;display:flex;flex-direction:column;gap:4px}
+.hdr .row{display:flex;justify-content:space-between;align-items:center}
+.hdr h1{margin:0;font-size:28px;font-weight:700;letter-spacing:.02em}
+.sub{font-size:13px;color:var(--mut)}
+.badge{font-size:11px;color:var(--amb);border:1px solid #5A4A26;border-radius:999px;padding:2px 8px}
+.sec{padding:12px 16px 4px;display:flex;flex-direction:column;gap:8px}
+.sech{display:flex;justify-content:space-between;align-items:center;margin:0 4px;gap:8px}
+.sech h2{margin:0;font-size:15px;font-weight:700;color:var(--tx2)}
+.hint{font-size:12px;color:#6B7585}
+.more{font-size:12px;color:var(--amb)}
+.card{background:var(--card);border-radius:14px}
+.pad{padding:12px 14px}
+.list{padding:2px 14px}
+.list>*{border-bottom:1px solid var(--line)}
+.list>*:last-child{border-bottom:0}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.ic{padding:12px;display:flex;flex-direction:column;gap:3px}
+.lbl{font-size:12px;color:var(--mut)}
+.small{font-size:11px;color:var(--mut2)}
+.big{font-size:19px;font-weight:600}
+.row{display:flex;align-items:center;gap:10px}
+.lrow{display:flex;align-items:center;gap:10px;min-height:56px}
+.col{display:flex;flex-direction:column}
+.right{align-items:flex-end;text-align:right}
+.pill{font-size:12px;font-weight:600;color:#fff;border-radius:6px;padding:1px 6px}
+.seg{display:flex;background:var(--card);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;cursor:pointer;min-width:48px;min-height:32px;border-radius:8px;font-size:12px;font-weight:600;background:transparent;color:var(--mut);padding:0 8px}
+.seg button.on{background:var(--amb);color:#141413}
+.seg.big2{border-radius:12px;padding:4px;gap:4px}
+.seg.big2 button{flex:1;min-height:40px;font-size:14px;border-radius:9px}
+.seg.big2 button.on{background:#262C36;color:var(--amb)}
+.chips{display:flex;gap:6px;overflow-x:auto}
+.chips button{border:0;cursor:pointer;min-height:36px;padding:0 16px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap;background:var(--card);color:var(--mut)}
+.chips button.on{background:var(--amb);color:#141413}
+.nav{position:fixed;left:0;right:0;bottom:0;background:#12161C;border-top:1px solid var(--line);padding:6px 0 calc(8px + env(safe-area-inset-bottom));z-index:10}
+.nav div{max-width:520px;margin:0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.nav a{display:flex;flex-direction:column;align-items:center;gap:2px;min-height:44px;color:#6B7585;font-size:11px;justify-content:center}
+.nav a.on{color:var(--amb)}
+.top{padding:calc(14px + env(safe-area-inset-top)) 12px 0;display:flex;align-items:center;gap:4px}
+.back{width:44px;height:44px;display:flex;align-items:center;justify-content:center;border:0;background:none;cursor:pointer}
+.stat{display:flex;flex-direction:column;gap:2px}
+.stat b{font-size:16px;font-weight:600}
+.empty{padding:16px;font-size:13px;color:var(--mut2);text-align:center}
+.tbl{display:grid;gap:6px;align-items:center}
+.kbox{position:relative;height:190px;touch-action:pan-y;user-select:none;cursor:grab}
+svg{display:block}
+</style>
+</head>
+<body>
+<div id="app"><div class="empty" style="padding-top:40vh">載入中…</div></div>
+<nav class="nav"><div>
+  <a href="#/us" data-tab="us"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v14H4z M8 9h8 M8 13h8 M8 17h5"/></svg>美股</a>
+  <a href="#/tw" data-tab="tw"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19V5 M4 19h16 M8 15l4-4 3 3 5-6"/></svg>台股</a>
+  <a href="#/info" data-tab="info"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 4h11l3 3v13H5z M8 10h8 M8 14h8 M8 18h4"/></svg>資訊</a>
+  <a href="#/settings" data-tab="settings"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3 M4.9 4.9l2.1 2.1 M17 17l2.1 2.1 M4.9 19.1L7 17 M17 7l2.1-2.1"/></svg>設定</a>
+</div></nav>
+<script src="app.js"></script>
+</body>
+</html>
