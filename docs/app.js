@@ -16,7 +16,7 @@ const md = (iso) => (iso ? `${+iso.slice(5, 7)}/${+iso.slice(8, 10)}` : '—');
 const weekday = (iso) => '日一二三四五六'[new Date(iso + 'T00:00:00').getDay()];
 function volFmt(v, sym) {
   if (v == null) return '—';
-  if (sym && sym.endsWith('.TW')) return `${fmt(v / 1000, 0)} 張`;
+  if (sym && /\.TWO?$/.test(sym)) return `${fmt(v / 1000, 0)} 張`;
   if (sym === 'TX_NIGHT') return `${fmt(v, 0)} 口`;
   if (v >= 1e8) return `${(v / 1e8).toFixed(2)} 億`;
   if (v >= 1e4) return `${(v / 1e4).toFixed(1)} 萬`;
@@ -364,7 +364,7 @@ function intradayChart(k, sym) {
 function pageDetail(sym) {
   const k = kcache[sym];
   const q = findQuote(sym) || {};
-  const isTW = sym.endsWith('.TW') || sym === '^TWII' || sym === 'TX_NIGHT';
+  const isTW = /\.TWO?$/.test(sym) || sym === '^TWII' || sym === 'TX_NIGHT';
   const backTo = isTW ? '#/tw' : '#/us';
   const name = q.name || (k && k.name) || sym;
   const top = `<div class="top"><a class="back" href="${backTo}" aria-label="返回">${ICON_BACK}</a><div class="col"><span style="font-size:18px;font-weight:700">${esc(name)}</span><span class="lbl num">${esc(sym === 'TX_NIGHT' ? `台指期 ${q.contract || ''} 盤後` : sym)}</span></div></div>`;
@@ -579,7 +579,7 @@ async function loadK(sym) {
 async function render(scrollTop = true) {
   const h = decodeURIComponent(location.hash.replace(/^#\/?/, '')) || 'us';
   const [page, ...rest] = h.split('/');
-  const tab = ['us', 'tw', 'info', 'settings'].includes(page) ? page : page === 's' && (rest.join('/').endsWith('.TW') || ['^TWII', 'TX_NIGHT'].includes(rest.join('/'))) ? 'tw' : page === 's' ? 'us' : 'tw';
+  const tab = ['us', 'tw', 'info', 'settings'].includes(page) ? page : page === 's' && (/\.TWO?$/.test(rest.join('/')) || ['^TWII', 'TX_NIGHT'].includes(rest.join('/'))) ? 'tw' : page === 's' ? 'us' : 'tw';
   document.querySelectorAll('.nav a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
   if (!D) return;
   let html;

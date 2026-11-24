@@ -369,9 +369,11 @@ def futures_oi():
 
 
 def futures_oi_fetch():
-    start = TODAY - dt.timedelta(days=40)
+    # 當天收盤資料下午才出來，太早查「到今天」期交所會回錯誤頁
+    end = TODAY if NOW.hour >= 15 else TODAY - dt.timedelta(days=1)
+    start = end - dt.timedelta(days=30)
     r = S.post("https://www.taifex.com.tw/cht/3/futContractsDateDown", data={
-        "queryStartDate": start.strftime("%Y/%m/%d"), "queryEndDate": TODAY.strftime("%Y/%m/%d"),
+        "queryStartDate": start.strftime("%Y/%m/%d"), "queryEndDate": end.strftime("%Y/%m/%d"),
         "commodityId": "TXF",
     }, timeout=30)
     df = pd.read_csv(io.StringIO(r.content.decode("big5", errors="ignore")), index_col=False)
@@ -394,12 +396,54 @@ def futures_oi_fetch():
 
 
 # ---------- 台股：投本比、外本比 ----------
+def tpex_day(d):
+    """櫃買中心個股三大法人（上櫃）。網址有新舊兩版，逐一嘗試。回傳 {代號: ([外資, 投信, 自營商], 名稱)}"""
+    out = {}
+    roc = f"{d.year - 1911}/{d:%m/%d}"
+    tries = []
+    try:
+        time.sleep(2)
+        r = S.post("https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade",
+                   data={"type": "Daily", "sect": "EW", "date": d.strftime("%Y/%m/%d"), "id": "", "response": "json"}, timeout=30)
+        j = r.json()
+        rows = table(j)
+        for x in rows:
+            code = str(col(x, "代號") or "").strip()
+            f = next((num(v) for k, v in x.items() if "外資及陸資" in k and "買賣超" in k and "不含" not in k), None)
+            if f is None:
+                f = (num(col(x, "外資及陸資", "不含", "買賣超")) or 0) + (num(col(x, "外資自營商", "買賣超")) or 0)
+            t = num(col(x, "投信", "買賣超"))
+            dl = next((num(v) for k, v in x.items() if k.startswith("自營商") and "買賣超" in k and "自行" not in k and "避險" not in k), None)
+            if code:
+                out[code] = ([int(f or 0), int(t or 0), int(dl or 0)], str(col(x, "名稱") or code).strip())
+        if out:
+            return out
+        tries.append(f"新版:{j.get('stat') if isinstance(j, dict) else type(j).__name__}")
+    except Exception as e:  # noqa: BLE001
+        tries.append(f"新版:{type(e).__name__}")
+    try:
+        time.sleep(2)
+        j = get_json(f"https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?l=zh-tw&se=EW&t=D&d={roc}&o=json")
+        for row in j.get("aaData") or []:
+            if len(row) >= 23:
+                out[str(row[0]).strip()] = ([int(num(row[10]) or 0), int(num(row[13]) or 0), int(num(row[22]) or 0)], str(row[1]).strip())
+        if out:
+            return out
+        tries.append("舊版:無資料")
+    except Exception as e:  # noqa: BLE001
+        tries.append(f"舊版:{type(e).__name__}")
+    print(f"上櫃三大法人 {d} 抓不到：", tries)
+    return None
+
+
 def t86_history(n_days=20):
     """證交所 T86 個股三大法人買賣超，逐日快取在 hist/t86.json，每天只需補抓新的日子。
     回傳 (日期由舊到新, {日期: {代號: [外資, 投信, 自營商] 股數}}, {代號: 名稱})"""
     path = os.path.join(HDIR, "t86.json")
     cache = load(path, {"days": {}, "names": {}})
     days, names = cache["days"], cache["names"]
+    otc_days = set(cache.get("otc_days", []))
+    otc = set(cache.get("otc", []))
     d, got, misses = TODAY, [], 0
     while len(got) < n_days and (TODAY - d).days < n_days * 2 + 10:
         key = d.isoformat()
@@ -420,11 +464,24 @@ def t86_history(n_days=20):
                         day[code] = [int(f), int(t), int(dl or 0)]
                     days[key] = day
                     got.append(key)
+            if key in days and key not in otc_days and misses < 60:
+                misses += 1
+                o = tpex_day(d)
+                if o:
+                    for code, (v, nm) in o.items():
+                        days[key][code] = v
+                        names[code] = nm
+                        otc.add(code)
+                    otc_days.add(key)
         d -= dt.timedelta(days=1)
     keep = sorted(days)[-(n_days + 5):]
-    cache = {"days": {k: days[k] for k in keep}, "names": names}
+    missing = [k for k in sorted(got) if k not in otc_days]
+    if missing:
+        ERRORS.append(f"上櫃三大法人缺 {len(missing)} 天（排行只含上市）：{', '.join(missing[-3:])}")
+    cache = {"days": {k: days[k] for k in keep}, "names": names,
+             "otc_days": sorted(x for x in otc_days if x in keep), "otc": sorted(otc)}
     save(path, cache)
-    return sorted(got), cache["days"], names
+    return sorted(got), cache["days"], names, otc
 
 
 def batch_quotes(syms):
@@ -476,7 +533,16 @@ def ratios():
         sh = num(col(r, "已發行普通股數"))
         if code and sh:
             shares[code] = sh
-    dates, days, names = t86_history(max(periods))
+    try:
+        for r in get_json("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O"):
+            code = str(col(r, "代號") or col(r, "Code") or "").strip()
+            sh = num(col(r, "已發行普通股")) or num(col(r, "IssueShares"))
+            if code and sh:
+                shares[code] = sh
+    except Exception as e:  # noqa: BLE001
+        ERRORS.append(f"上櫃股本: {type(e).__name__}: {e}")
+    dates, days, names, otc = t86_history(max(periods))
+    sfx = lambda c: f"{c}.TWO" if c in otc else f"{c}.TW"  # noqa: E731
     if not dates:
         raise ValueError("沒有抓到任何一天的 T86 資料")
     lists, union = {}, set()
@@ -493,17 +559,17 @@ def ratios():
             buy = sorted((x for x in cand if x[1] > 0), key=lambda x: x[2], reverse=True)[:top_n]
             sell = sorted((x for x in cand if x[1] < 0), key=lambda x: x[2])[:top_n]
             for side, lst in (("buy", buy), ("sell", sell)):
-                lists[f"{kind}|{p}|{side}"] = [{"code": c, "sym": f"{c}.TW", "name": names.get(c, c),
+                lists[f"{kind}|{p}|{side}"] = [{"code": c, "sym": sfx(c), "name": names.get(c, c), "otc": c in otc,
                                                 "lots": round(net / 1000), "ratio": r2(ratio, 3)} for c, net, ratio in lst]
                 union.update(c for c, _, _ in lst)
-    quotes = batch_quotes(sorted(f"{c}.TW" for c in union))
+    quotes = batch_quotes(sorted(sfx(c) for c in union))
     # 每檔近 20 日三大法人（張），給個股頁的「三大法人」分頁用
     chips = {}
     for c in union:
         ser = [[round(days[dkey].get(c, [0, 0, 0])[i] / 1000) for dkey in dates] for i in range(3)]
-        chips[f"{c}.TW"] = {"foreign": ser[0], "trust": ser[1], "dealer": ser[2], "shares": shares.get(c)}
+        chips[sfx(c)] = {"foreign": ser[0], "trust": ser[1], "dealer": ser[2], "shares": shares.get(c)}
     return {"dates": dates, "periods": periods, "lists": lists, "quotes": quotes, "chips": chips,
-            "names": {f"{c}.TW": names.get(c, c) for c in union}}
+            "names": {sfx(c): names.get(c, c) for c in union}}
 
 
 # ---------- 資訊：新聞 ----------
