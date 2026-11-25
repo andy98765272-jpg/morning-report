@@ -175,23 +175,23 @@ def patch_latest(sym, rows):
 
 
 def twse_taiex(rows):
-    """用證交所官方的加權指數日線覆蓋最近一個月（Yahoo 可能缺最新一天或數字有出入）。"""
+    """用證交所官方收盤指數（OpenAPI 每日市場成交資訊）校正最近一個月。
+    Yahoo 的分時資料停在 13:25，不含收盤集合競價，收盤數字會有落差。"""
     try:
         off = {}
-        for d in (TODAY, TODAY.replace(day=1) - dt.timedelta(days=1)):
-            for r in table(twse(f"https://www.twse.com.tw/rwd/zh/indicesReport/MI_5MINS_HIST?date={d:%Y%m01}&response=json")):
-                day = roc_date(col(r, "日期") or "")
-                if day:
-                    off[day.isoformat()] = [num(col(r, "開盤")), num(col(r, "最高")), num(col(r, "最低")), num(col(r, "收盤"))]
-        byd = {r[0]: r for r in rows}
-        for d, v in off.items():
-            if all(v):
-                if d in byd:
-                    byd[d][1:5] = v
-                elif not rows or d > rows[-1][0]:
-                    rows.append([d, *v, 0])
-                    byd[d] = rows[-1]
-        rows.sort(key=lambda r: r[0])
+        for r in get_json("https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK"):
+            d = roc_date(col(r, "Date") or col(r, "日期") or "")
+            c = num(col(r, "TAIEX") or col(r, "發行量加權股價指數"))
+            if d and c:
+                off[d.isoformat()] = c
+        if not off:
+            raise ValueError("沒有資料")
+        for r in rows:
+            if r[0] in off:
+                c = off[r[0]]
+                r[4] = c
+                r[2] = max(r[2], c)
+                r[3] = min(r[3], c)
     except Exception as e:  # noqa: BLE001
         ERRORS.append(f"證交所加權指數: {type(e).__name__}: {e}")
     return rows
