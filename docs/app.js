@@ -88,9 +88,9 @@ function pageUS() {
 function pageTW() {
   const t = D.tw || {};
   const tx = t.taiex, nt = t.night;
-  const idxCard = (q, href, label, extra) => q ? `
+  const idxCard = (q, href, label, extra, when) => q ? `
     <a class="card ic" href="${href}">
-      <span class="lbl">${label} · ${md(q.date)}</span>
+      <span class="lbl">${label} · ${when || md(q.date)}</span>
       <span class="num big">${fmt(q.price, dec(q.sym))}</span>
       <span class="num" style="font-size:12px;font-weight:600;color:${clr(q.chg)}">${sg(q.chg, dec(q.sym))} (${sg(q.pct)}%)</span>
       <div style="margin-top:4px">${spark(q.spark, q.sparkPrev, 100, 38)}</div>
@@ -133,7 +133,7 @@ function pageTW() {
   const rlabel = ui.ratioTab === 'trust' ? '投本比' : '外本比';
   const lastD = (R.dates || []).slice(-1)[0];
   return header('台股', `${genDate()} · 台股盤前`) + `
-    <section class="sec"><div class="grid2">${idxCard(tx, '#/s/%5ETWII', '加權指數', tx ? `成交量 ${volFmt(tx.vol, tx.sym)}` : '')}${idxCard(nt, '#/s/TX_NIGHT', '台指期夜盤', basis)}</div></section>
+    <section class="sec"><div class="grid2">${idxCard(tx, '#/s/%5ETWII', '加權指數', tx ? `成交量 ${volFmt(tx.vol, tx.sym)}` : '')}${idxCard(nt, '#/s/TX_NIGHT', '台指期夜盤', basis, nt ? `${md(nt.date)} 05:00 收` : '')}</div></section>
     <section class="sec"><div class="sech"><h2>三大法人買賣超 <span class="hint" style="font-weight:400">億元</span></h2><a class="more" href="#/inst">每日明細 ›</a></div><a class="card pad col" style="gap:12px" href="#/inst">${instHtml}</a></section>
     <section class="sec"><div class="sech"><h2>台指期未平倉 <span class="hint" style="font-weight:400">淨口數</span></h2><a class="more" href="#/oi">每日明細 ›</a></div><a class="card list" style="display:block" href="#/oi">${oiHtml}</a></section>
     <section class="sec"><div class="sech"><h2>籌碼排行</h2><div class="seg"><button data-act="ratio" data-v="trust" class="${ui.ratioTab === 'trust' ? 'on' : ''}">投本比</button><button data-act="ratio" data-v="foreign" class="${ui.ratioTab === 'foreign' ? 'on' : ''}">外本比</button></div></div>
@@ -370,7 +370,8 @@ function pageDetail(sym) {
   const top = `<div class="top"><a class="back" href="${backTo}" aria-label="返回">${ICON_BACK}</a><div class="col"><span style="font-size:18px;font-weight:700">${esc(name)}</span><span class="lbl num">${esc(sym === 'TX_NIGHT' ? `台指期 ${q.contract || ''} 盤後` : sym)}</span></div></div>`;
   if (!k) return top + `<div class="sec">${emptyBox(k === null ? '這檔沒有歷史資料' : '載入中…')}</div>`;
   const rows = k.daily, last = rows[rows.length - 1], prev = rows[rows.length - 2] || last, dd = dec(sym);
-  const price = last[4], chg = price - prev[4], pct = (price / prev[4] - 1) * 100;
+  const useQ = sym === 'TX_NIGHT' && q.prev != null;
+  const price = last[4], chg = useQ ? q.chg : price - prev[4], pct = useQ ? q.pct : (price / prev[4] - 1) * 100;
   const sw = sym === '^TWII' || sym === 'TX_NIGHT' ? `<div class="sec"><div class="seg big2"><a href="#/s/%5ETWII" class="${sym === '^TWII' ? 'on' : ''}" style="flex:1;display:flex;align-items:center;justify-content:center;min-height:40px;border-radius:9px;font-size:14px;font-weight:600;${sym === '^TWII' ? `background:#262C36;color:${AMB}` : 'color:var(--mut)'}">加權指數</a><a href="#/s/TX_NIGHT" style="flex:1;display:flex;align-items:center;justify-content:center;min-height:40px;border-radius:9px;font-size:14px;font-weight:600;${sym === 'TX_NIGHT' ? `background:#262C36;color:${AMB}` : 'color:var(--mut)'}">台指期夜盤</a></div></div>` : '';
   const K = aggregate(rows, ui.period);
   const kc = kChart(K, sym);
@@ -386,7 +387,7 @@ function pageDetail(sym) {
   const P = { D: '日K', W: '週K', M: '月K', Y: '年K' };
   return top + sw + `
     <div style="padding:6px 20px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span class="num" style="font-size:36px;font-weight:700;color:${clr(chg)}">${fmt(price, dd)}</span><span class="num" style="font-size:15px;font-weight:600;color:${clr(chg)}">${sg(chg, dd)} (${sg(pct)}%)</span><span class="small num">${esc(last[0])}</span></div>
-    <div class="sec"><div class="card pad col" style="gap:8px"><div class="row" style="justify-content:space-between"><b style="font-size:14px">當日走勢</b><span class="num lbl">昨收 ${fmt(k.intraday && k.intraday.prev, dd)}</span></div>${intradayChart(k, sym)}</div></div>
+    <div class="sec"><div class="card pad col" style="gap:8px"><div class="row" style="justify-content:space-between"><b style="font-size:14px">當日走勢</b><span class="num lbl">${sym === 'TX_NIGHT' ? `日盤收${q.refDate ? ' ' + md(q.refDate) : ''}` : '昨收'} ${fmt(k.intraday && k.intraday.prev, dd)}</span></div>${intradayChart(k, sym)}</div></div>
     <div class="sec"><div class="card pad col" style="gap:10px">
       <div class="row" style="justify-content:space-between"><b style="font-size:14px">K 線</b><div class="seg" style="background:var(--bg)">${Object.keys(P).map((p) => `<button data-act="period" data-v="${p}" class="${ui.period === p ? 'on' : ''}">${P[p]}</button>`).join('')}</div></div>
       <div id="kinfo">${kc.info}</div><div id="kwrap">${kc.svg}</div>

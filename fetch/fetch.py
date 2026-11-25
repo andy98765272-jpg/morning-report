@@ -240,79 +240,69 @@ def us_block():
 
 
 # ---------- 台股：大盤、夜盤 ----------
+def tx_csv(start, end):
+    """期交所每日行情 CSV（台指期 TX）：回傳 [(日期, 'night'/'day', 月份, 開, 高, 低, 收, 量)]。
+    期交所把夜盤記在「結束那天」的日期，例如 11/23 15:00～11/24 05:00 記為 11/24。"""
+    time.sleep(2)
+    r = S.post("https://www.taifex.com.tw/cht/3/futDataDown", data={
+        "down_type": "1", "commodity_id": "TX",
+        "queryStartDate": start.strftime("%Y/%m/%d"), "queryEndDate": end.strftime("%Y/%m/%d"),
+    }, timeout=30)
+    df = pd.read_csv(io.StringIO(r.content.decode("big5", errors="ignore")), index_col=False)
+    df.columns = [str(c).strip() for c in df.columns]
+    if "交易日期" not in df.columns:
+        raise ValueError(f"期交所行情格式不同：{list(df.columns)[:4]}")
+    out = []
+    for _, x in df.iterrows():
+        month = str(x.get("到期月份(週別)", "")).strip()
+        if "/" in month or "W" in month.upper():
+            continue
+        sess = "night" if "盤後" in str(x.get("交易時段", "")) else "day"
+        c = num(x.get("收盤價"))
+        if not c:
+            continue
+        out.append((str(x.get("交易日期", "")).replace("/", "-"), sess, month, num(x.get("開盤價")), num(x.get("最高價")),
+                    num(x.get("最低價")), c, int(num(x.get("成交量")) or 0)))
+    return out
+
+
 @section("夜盤", lambda: None)
 def tx_night():
     path = os.path.join(HDIR, "tx_night.json")
-    hist = load(path, {})
-    if len(hist) < 120:
-        backfill_tx(hist)
-    j = get_json("https://openapi.taifex.com.tw/v1/DailyMarketReportFut")
-    for r in j:
-        if str(col(r, "Contract") or "").strip() != "TX":
-            continue
-        sess = str(col(r, "TradingSession") or "")
-        if "盤後" not in sess and "After" not in sess:
-            continue
-        month = str(col(r, "ContractMonth") or "")
-        if "/" in month:
-            continue
-        d = roc_or_iso(col(r, "Date"))
-        rec = [num(col(r, "Open")), num(col(r, "High")), num(col(r, "Low")),
-               num(col(r, "Last")), int(num(col(r, "Volume")) or 0), month]
-        if d and rec[3] and (d not in hist or month <= hist[d][5]):
-            hist[d] = rec
-    save(path, hist)
-    return night_from_hist(hist)
-
-
-def roc_or_iso(s):
-    s = str(s or "").strip()
-    if re.fullmatch(r"\d{8}", s):
-        return f"{s[:4]}-{s[4:6]}-{s[6:]}"
-    d = roc_date(s)
-    if d:
-        return d.isoformat()
-    try:
-        return dt.date.fromisoformat(s.replace("/", "-")).isoformat()
-    except ValueError:
-        return None
-
-
-def backfill_tx(hist):
-    """期交所每日行情 CSV，一次查一個月，補一年盤後資料。"""
-    for m in range(12, -1, -1):
-        end = TODAY - dt.timedelta(days=30 * m)
-        start = end - dt.timedelta(days=30)
+    dpath = os.path.join(HDIR, "tx_day.json")
+    hist, dayc = load(path, {}), load(dpath, {})
+    ranges = [(TODAY - dt.timedelta(days=10), TODAY)]
+    if len(dayc) < 120:  # 第一次：補一年（日盤收盤也要，算夜盤漲跌用）
+        ranges += [(TODAY - dt.timedelta(days=30 * (m + 1)), TODAY - dt.timedelta(days=30 * m + 1)) for m in range(12)]
+    for a, b in ranges:
         try:
-            time.sleep(2)
-            r = S.post("https://www.taifex.com.tw/cht/3/futDataDown", data={
-                "down_type": "1", "commodity_id": "TX",
-                "queryStartDate": start.strftime("%Y/%m/%d"), "queryEndDate": end.strftime("%Y/%m/%d"),
-            }, timeout=30)
-            df = pd.read_csv(io.StringIO(r.content.decode("big5", errors="ignore")), index_col=False)
+            for d, sess, month, o, h, l, c, v in tx_csv(a, b):
+                book = hist if sess == "night" else dayc
+                if d not in book or month <= book[d][5]:
+                    book[d] = [o, h, l, c, v, month]
         except Exception as e:  # noqa: BLE001
-            ERRORS.append(f"夜盤歷史補資料: {e}")
-            return
-        df.columns = [str(c).strip() for c in df.columns]
-        for _, x in df.iterrows():
-            month = str(x.get("到期月份(週別)", "")).strip()
-            if "/" in month or "W" in month or "盤後" not in str(x.get("交易時段", "")):
-                continue
-            d = str(x.get("交易日期", "")).replace("/", "-")
-            rec = [num(x.get("開盤價")), num(x.get("最高價")), num(x.get("最低價")),
-                   num(x.get("收盤價")), int(num(x.get("成交量")) or 0), month]
-            if rec[3] and (d not in hist or month <= hist[d][5]):
-                hist[d] = rec
+            ERRORS.append(f"夜盤行情 {a}~{b}: {type(e).__name__}: {e}")
+            break
+    save(path, hist)
+    save(dpath, dayc)
+    return night_from_hist(hist, dayc)
 
 
-def night_from_hist(hist):
+def night_from_hist(hist, dayc):
     rows = [[d, *v[:5]] for d, v in sorted(hist.items()) if v[3]]
     if len(rows) < 2:
         return None
     sm = summarize(rows)
+    last = rows[-1][0]
+    # 夜盤漲跌以「前一個日盤收盤」為基準（跟看盤軟體一致），不是跟上一個夜盤比
+    ref_day = max((d for d in dayc if d < last), default=None)
+    if ref_day:
+        ref = dayc[ref_day][3]
+        sm.update({"prev": ref, "chg": r2(sm["price"] - ref, 2), "pct": r2((sm["price"] / ref - 1) * 100), "refDate": ref_day})
+    sm["sparkPrev"] = sm["prev"]
     save(os.path.join(KDIR, "TX_NIGHT.json"),
          {"sym": "TX_NIGHT", "name": "台指期 夜盤", "daily": rows, "intraday": {"prev": sm["prev"], "pts": []}})
-    return {"sym": "TX_NIGHT", "name": "台指期夜盤", "contract": hist[rows[-1][0]][5], **sm}
+    return {"sym": "TX_NIGHT", "name": "台指期夜盤", "contract": hist[last][5], **sm}
 
 
 # ---------- 台股：三大法人買賣超（金額）----------
