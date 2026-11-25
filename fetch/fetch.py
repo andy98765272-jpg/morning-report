@@ -148,13 +148,53 @@ def daily(sym):
     return rows
 
 
+_intra_day = {}
+
+
 def intraday(sym):
     df = yf.Ticker(sym).history(period="1d", interval="5m", auto_adjust=False)
-    pts = []
+    pts, hi, lo, vol, op = [], None, None, 0, None
     for idx, r in df.iterrows():
         if not pd.isna(r["Close"]):
             pts.append([idx.strftime("%H:%M"), r2(r["Close"], 4)])
+            op = op if op is not None else r2(r["Open"], 4)
+            hi = max(hi or r["High"], r["High"])
+            lo = min(lo or r["Low"], r["Low"])
+            vol += 0 if pd.isna(r["Volume"]) else int(r["Volume"])
+    if pts:
+        _intra_day[sym] = [df.index[-1].strftime("%Y-%m-%d"), op, r2(hi, 4), r2(lo, 4), pts[-1][1], vol]
     return pts
+
+
+def patch_latest(sym, rows):
+    """Yahoo 日線偶爾晚一天才補上最新交易日；分時資料已有新的一天時，先用分時資料補一根。"""
+    x = _intra_day.get(sym)
+    if x and rows and x[0] > rows[-1][0]:
+        rows.append(x)
+    return rows
+
+
+def twse_taiex(rows):
+    """用證交所官方的加權指數日線覆蓋最近一個月（Yahoo 可能缺最新一天或數字有出入）。"""
+    try:
+        off = {}
+        for d in (TODAY, TODAY.replace(day=1) - dt.timedelta(days=1)):
+            for r in table(twse(f"https://www.twse.com.tw/rwd/zh/indicesReport/MI_5MINS_HIST?date={d:%Y%m01}&response=json")):
+                day = roc_date(col(r, "日期") or "")
+                if day:
+                    off[day.isoformat()] = [num(col(r, "開盤")), num(col(r, "最高")), num(col(r, "最低")), num(col(r, "收盤"))]
+        byd = {r[0]: r for r in rows}
+        for d, v in off.items():
+            if all(v):
+                if d in byd:
+                    byd[d][1:5] = v
+                elif not rows or d > rows[-1][0]:
+                    rows.append([d, *v, 0])
+                    byd[d] = rows[-1]
+        rows.sort(key=lambda r: r[0])
+    except Exception as e:  # noqa: BLE001
+        ERRORS.append(f"證交所加權指數: {type(e).__name__}: {e}")
+    return rows
 
 
 def summarize(rows, pts=None):
@@ -194,7 +234,9 @@ def quote(sym, name, extra=None):
         pts = intraday(sym)
     except Exception:  # noqa: BLE001
         pts = []
-    # 盤中資料若不是最後一個交易日（例如假日抓取）就不用
+    rows = patch_latest(sym, rows)
+    if sym == "^TWII":
+        rows = twse_taiex(rows)
     sm = summarize(rows, pts)
     if sm is None:
         raise ValueError(f"{sym} 沒有日線資料")
