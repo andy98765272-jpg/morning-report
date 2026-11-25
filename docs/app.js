@@ -321,7 +321,8 @@ function kChart(K, sym) {
   const sx = sel * W + W / 2;
   s += `<line x1="${sx.toFixed(2)}" x2="${sx.toFixed(2)}" y1="0" y2="100" stroke="${MUT}" stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/>`;
   const tagSide = hiIdx > n / 2 ? 'left:0' : 'right:0';
-  const S = view[sel], prevC = sel > 0 ? view[sel - 1].c : (K[end - n - 1] || S).c, pct = (S.c / prevC - 1) * 100;
+  const S = view[sel], refs = (kcache[sym] || {}).refs, nightRef = ui.period === 'D' && refs && refs[S.d];
+  const prevC = nightRef || (sel > 0 ? view[sel - 1].c : (K[end - n - 1] || S).c), pct = (S.c / prevC - 1) * 100;
   const info = `
     <div class="card" style="background:var(--bg);padding:8px 10px;display:flex;flex-direction:column;gap:6px">
       <div class="row num" style="justify-content:space-between;font-size:12px"><b>${esc(S.label)}</b><b style="color:${clr(pct)}">${sg(pct)}%</b></div>
@@ -387,7 +388,7 @@ function pageDetail(sym) {
   const P = { D: '日K', W: '週K', M: '月K', Y: '年K' };
   return top + sw + `
     <div style="padding:6px 20px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span class="num" style="font-size:36px;font-weight:700;color:${clr(chg)}">${fmt(price, dd)}</span><span class="num" style="font-size:15px;font-weight:600;color:${clr(chg)}">${sg(chg, dd)} (${sg(pct)}%)</span><span class="small num">${esc(last[0])}</span></div>
-    <div class="sec"><div class="card pad col" style="gap:8px"><div class="row" style="justify-content:space-between"><b style="font-size:14px">當日走勢</b><span class="num lbl">${sym === 'TX_NIGHT' ? `日盤收${q.refDate ? ' ' + md(q.refDate) : ''}` : '昨收'} ${fmt(k.intraday && k.intraday.prev, dd)}</span></div>${intradayChart(k, sym)}</div></div>
+    <div class="sec"><div class="card pad col" style="gap:8px"><div class="row" style="justify-content:space-between"><b style="font-size:14px">當日走勢</b><span class="num lbl">${sym === 'TX_NIGHT' ? `日盤結算${q.refDate ? ' ' + md(q.refDate) : ''}` : '昨收'} ${fmt(k.intraday && k.intraday.prev, dd)}</span></div>${intradayChart(k, sym)}</div></div>
     <div class="sec"><div class="card pad col" style="gap:10px">
       <div class="row" style="justify-content:space-between"><b style="font-size:14px">K 線</b><div class="seg" style="background:var(--bg)">${Object.keys(P).map((p) => `<button data-act="period" data-v="${p}" class="${ui.period === p ? 'on' : ''}">${P[p]}</button>`).join('')}</div></div>
       <div id="kinfo">${kc.info}</div><div id="kwrap">${kc.svg}</div>

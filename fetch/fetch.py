@@ -304,7 +304,7 @@ def tx_csv(start, end):
         if not c:
             continue
         out.append((str(x.get("交易日期", "")).replace("/", "-"), sess, month, num(x.get("開盤價")), num(x.get("最高價")),
-                    num(x.get("最低價")), c, int(num(x.get("成交量")) or 0)))
+                    num(x.get("最低價")), c, int(num(x.get("成交量")) or 0), num(x.get("結算價"))))
     return out
 
 
@@ -318,10 +318,10 @@ def tx_night():
         ranges += [(TODAY - dt.timedelta(days=30 * (m + 1)), TODAY - dt.timedelta(days=30 * m + 1)) for m in range(12)]
     for a, b in ranges:
         try:
-            for d, sess, month, o, h, l, c, v in tx_csv(a, b):
+            for d, sess, month, o, h, l, c, v, stl in tx_csv(a, b):
                 book = hist if sess == "night" else dayc
                 if d not in book or month <= book[d][5]:
-                    book[d] = [o, h, l, c, v, month]
+                    book[d] = [o, h, l, c, v, month, stl]
         except Exception as e:  # noqa: BLE001
             ERRORS.append(f"夜盤行情 {a}~{b}: {type(e).__name__}: {e}")
             break
@@ -336,14 +336,20 @@ def night_from_hist(hist, dayc):
         return None
     sm = summarize(rows)
     last = rows[-1][0]
-    # 夜盤漲跌以「前一個日盤收盤」為基準（跟看盤軟體一致），不是跟上一個夜盤比
-    ref_day = max((d for d in dayc if d < last), default=None)
+    # 夜盤漲跌以「前一個日盤的結算價」為基準（跟看盤軟體一致），沒有結算價才用收盤價
+    def ref_for(day):
+        rd = max((d for d in dayc if d < day), default=None)
+        if not rd:
+            return None, None
+        v = dayc[rd]
+        return rd, (v[6] if len(v) > 6 and v[6] else v[3])
+    refs = {d: ref_for(d)[1] for d, *_ in rows}
+    ref_day, ref = ref_for(last)
     if ref_day:
-        ref = dayc[ref_day][3]
         sm.update({"prev": ref, "chg": r2(sm["price"] - ref, 2), "pct": r2((sm["price"] / ref - 1) * 100), "refDate": ref_day})
     sm["sparkPrev"] = sm["prev"]
     save(os.path.join(KDIR, "TX_NIGHT.json"),
-         {"sym": "TX_NIGHT", "name": "台指期 夜盤", "daily": rows, "intraday": {"prev": sm["prev"], "pts": []}})
+         {"sym": "TX_NIGHT", "name": "台指期 夜盤", "daily": rows, "refs": refs, "intraday": {"prev": sm["prev"], "pts": []}})
     return {"sym": "TX_NIGHT", "name": "台指期夜盤", "contract": hist[last][5], **sm}
 
 
